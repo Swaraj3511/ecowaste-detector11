@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>EcoWaste AI Detector</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+
+<style>
+* {
+    box-sizing: border-box;
+    font-family: Arial, sans-serif;
+}
+
+body {
+    margin: 0;
+    background: linear-gradient(135deg, #d9ffe2, #8ee6a2);
+    color: #173b22;
+}
+
+header {
+    background: #138a3d;
+    color: white;
+    text-align: center;
+    padding: 30px 15px;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 38px;
+}
+
+header p {
+    font-size: 17px;
+}
+
+.container {
+    max-width: 900px;
+    margin: 30px auto;
+    padding: 15px;
+}
+
+.card {
+    background: white;
+    border-radius: 20px;
+    padding: 30px;
+    margin-bottom: 25px;
+    text-align: center;
+    box-shadow: 0 8px 25px #0002;
+}
+
+.upload {
+    border: 3px dashed #159447;
+    border-radius: 15px;
+    padding: 30px;
+    margin-top: 20px;
+    background: #f2fff4;
+}
+
+input {
+    margin: 15px;
+}
+
+#preview {
+    display: none;
+    max-width: 90%;
+    max-height: 350px;
+    margin: 20px auto;
+    border-radius: 15px;
+}
+
+button {
+    background: #159447;
+    color: white;
+    border: 0;
+    padding: 14px 25px;
+    border-radius: 10px;
+    font-size: 17px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #0b7134;
+}
+
+button:disabled {
+    background: #999;
+    cursor: not-allowed;
+}
+
+#loading {
+    display: none;
+    margin: 20px;
+    font-weight: bold;
+}
+
+#result {
+    display: none;
+    margin-top: 25px;
+    padding: 25px;
+    border-radius: 15px;
+}
+
+.wet {
+    background: #fff2b8;
+}
+
+.dry {
+    background: #dcecff;
+}
+
+.recycle {
+    background: #d9ffd9;
+}
+
+.hazard {
+    background: #ffdada;
+}
+
+.unknown {
+    background: #eeeeee;
+}
+
+.category {
+    font-size: 30px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.confidence {
+    font-size: 18px;
+    margin: 10px;
+}
+
+.tip {
+    margin-top: 20px;
+    padding: 15px;
+    background: white;
+    border-radius: 10px;
+}
+
+#detectedObject {
+    font-size: 20px;
+    color: #444;
+}
+
+.status {
+    color: #555;
+    margin-top: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>🌱 EcoWaste AI Detector</h1>
+    <p>Artificial Intelligence for a Cleaner Planet 🌍</p>
+</header>
+
+<div class="container">
+
+<div class="card">
+
+    <h2>📸 Upload Waste Image</h2>
+
+    <p>
+        Our AI will analyze the image and try to identify the object.
+    </p>
+
+    <div class="upload">
+
+        <input
+            type="file"
+            id="imageInput"
+            accept="image/*"
+        >
+
+        <img id="preview">
+
+        <br>
+
+        <button id="detectButton" disabled>
+            🔍 Analyze with AI
+        </button>
+
+        <div id="loading">
+            🤖 AI is analyzing your image...
+        </div>
+
+        <div class="status" id="status">
+            Loading AI model...
+        </div>
+
+    </div>
+
+    <div id="result">
+
+        <div class="category" id="category"></div>
+
+        <div id="detectedObject"></div>
+
+        <div class="confidence" id="confidence"></div>
+
+        <div class="tip">
+            <strong>💡 Disposal Advice</strong>
+            <p id="tip"></p>
+        </div>
+
+    </div>
+
+</div>
+
+
+<div class="card">
+
+    <h2>🧠 How The AI Works</h2>
+
+    <p>
+        1️⃣ You upload a photograph.
+    </p>
+
+    <p>
+        2️⃣ The AI model analyzes the image.
+    </p>
+
+    <p>
+        3️⃣ It identifies objects it recognizes.
+    </p>
+
+    <p>
+        4️⃣ Our program maps the object to a waste category.
+    </p>
+
+    <p>
+        5️⃣ You receive disposal advice.
+    </p>
+
+</div>
+
+
+<div class="card">
+
+    <h2>🌍 Why Waste Separation?</h2>
+
+    <p>
+        Proper waste separation helps recycling, reduces pollution,
+        and keeps harmful materials away from the environment.
+    </p>
+
+    <h2 style="margin-top:20px;">
+        ♻️ Reduce • Reuse • Recycle
+    </h2>
+
+</div>
+
+</div>
+
+
+<script>
+
+let model = null;
+
+
+/* --------------------------------
+   LOAD AI MODEL
+-------------------------------- */
+
+async function loadAI() {
+
+    try {
+
+        model = await cocoSsd.load();
+
+        document.getElementById("status").textContent =
+            "✅ AI model ready! Upload a photo.";
+
+        document.getElementById("detectButton").disabled = false;
+
+    } catch (error) {
+
+        console.error(error);
+
+        document.getElementById("status").textContent =
+            "❌ Could not load AI model. Check your internet connection.";
+
+    }
+}
+
+loadAI();
+
+
+/* --------------------------------
+   IMAGE PREVIEW
+-------------------------------- */
+
+const imageInput =
+    document.getElementById("imageInput");
+
+const preview =
+    document.getElementById("preview");
+
+imageInput.addEventListener("change", function() {
+
+    const file = this.files[0];
+
+    if (!file) return;
+
+    preview.src = URL.createObjectURL(file);
+
+    preview.style.display = "block";
+
+    document.getElementById("result").style.display = "none";
+
+});
+
+
+/* --------------------------------
+   WASTE CATEGORY
+-------------------------------- */
+
+function getWasteInfo(objectName) {
+
+    const name = objectName.toLowerCase();
+
+
+    /* WET / ORGANIC */
+
+    if (
+        name.includes("banana") ||
+        name.includes("apple") ||
+        name.includes("orange") ||
+        name.includes("broccoli") ||
+        name.includes("carrot") ||
+        name.includes("sandwich") ||
+        name.includes("cake") ||
+        name.includes("pizza")
+    ) {
+
+        return {
+
+            category: "🥬 WET / ORGANIC WASTE",
+
+            className: "wet",
+
+            tip:
+            "Put food and biodegradable waste in the wet/organic waste bin. Composting is an excellent option when available."
+
+        };
+
+    }
+
+
+    /* RECYCLABLE */
+
+    if (
+        name.includes("bottle") ||
+        name.includes("can") ||
+        name.includes("cup")
+    ) {
+
+        return {
+
+            category: "♻️ RECYCLABLE",
+
+            className: "recycle",
+
+            tip:
+            "Clean and separate the item before sending it for recycling. Follow your local recycling rules."
+
+        };
+
+    }
+
+
+    /* DRY WASTE */
+
+    if (
+        name.includes("book") ||
+        name.includes("paper") ||
+        name.includes("cardboard")
+    ) {
+
+        return {
+
+            category: "📦 DRY WASTE",
+
+            className: "dry",
+
+            tip:
+            "Keep paper and cardboard dry and separate from food waste so they can be recycled."
+
+        };
+
+    }
+
+
+    /* OTHER */
+
+    return {
+
+        category: "🗑️ OTHER / UNKNOWN",
+
+        className: "unknown",
+
+        tip:
+        "The AI recognized the object, but this demo does not have a specific recycling rule for it. Check your local waste-disposal guidelines."
+
+    };
+
+}
+
+
+/* --------------------------------
+   AI DETECTION
+-------------------------------- */
+
+document
+.getElementById("detectButton")
+.addEventListener("click", async function() {
+
+    if (!model) {
+
+        alert("AI model is still loading. Please wait.");
+
+        return;
+
+    }
+
+    if (!imageInput.files.length) {
+
+        alert("Please upload an image first.");
+
+        return;
+
+    }
+
+
+    document.getElementById("loading").style.display =
+        "block";
+
+    document.getElementById("result").style.display =
+        "none";
+
+
+    try {
+
+        const predictions =
+            await model.detect(preview, 5, 0.35);
+
+
+        document.getElementById("loading").style.display =
+            "none";
+
+
+        if (predictions.length === 0) {
+
+            document.getElementById("result").style.display =
+                "block";
+
+            document.getElementById("category").textContent =
+                "❓ NOTHING RECOGNIZED";
+
+            document.getElementById("detectedObject").textContent =
+                "The AI could not confidently recognize an object.";
+
+            document.getElementById("confidence").textContent =
+                "Try taking a clearer photo.";
+
+            document.getElementById("tip").textContent =
+                "Make sure the waste item is clearly visible and well lit.";
+
+            return;
+
+        }
+
+
+        /* Highest-confidence prediction */
+
+        const prediction = predictions[0];
+
+        const objectName = prediction.class;
+
+        const confidence =
+            Math.round(prediction.score * 100);
+
+
+        const waste =
+            getWasteInfo(objectName);
+
+
+        const result =
+            document.getElementById("result");
+
+
+        result.className =
+            "result " + waste.className;
+
+        result.style.display =
+            "block";
+
+
+        document.getElementById("category").textContent =
+            waste.category;
+
+
+        document.getElementById("detectedObject").textContent =
+            "🤖 AI detected: " + objectName;
+
+
+        document.getElementById("confidence").textContent =
+            "🎯 AI confidence: " + confidence + "%";
+
+
+        document.getElementById("tip").textContent =
+            waste.tip;
+
+
+    } catch (error) {
+
+        console.error(error);
+
+        document.getElementById("loading").style.display =
+            "none";
+
+        alert(
+            "Something went wrong while analyzing the image."
+        );
+
+    }
+
+});
+
+</script>
+
+</body>
+</html>
